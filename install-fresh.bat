@@ -5,13 +5,25 @@ title Kubit Ticket System - Instalim i ri
 color 0B
 
 REM ====== Konfigurimi ======
-set "SCRIPT_VERSION=2026-04-21.3"
+set "SCRIPT_VERSION=2026-04-21.4"
 set "REPO_URL=https://github.com/kubit-ks/Kubit-Ticket-System.git"
 set "INSTALL_DIR=C:\Kubit"
 set "LOG=%TEMP%\kubit-install-fresh.log"
 
 echo [%date% %time%] Instalimi filloi - install-fresh.bat v!SCRIPT_VERSION! > "%LOG%"
 echo [%date% %time%] Script path: %~f0 >> "%LOG%"
+
+REM ====== Nese skripti po ekzekutohet brenda INSTALL_DIR, zhvendose ne TEMP ======
+REM Kjo parandalon bllokim te .bat-eve gjate git reset --hard
+set "SCRIPT_DIR=%~dp0"
+if /I "!SCRIPT_DIR:~0,8!"=="%INSTALL_DIR:~0,8%" (
+    echo [!] Skripti po punon brenda %INSTALL_DIR%. Duke e zhvendosur ne %%TEMP%%...
+    set "NEW_PATH=%TEMP%\kubit-install-fresh-v!SCRIPT_VERSION!.bat"
+    copy /Y "%~f0" "!NEW_PATH!" >nul
+    echo [%date% %time%] Relaunching from !NEW_PATH! >> "%LOG%"
+    start "" /wait cmd /c "!NEW_PATH!"
+    exit /b 0
+)
 
 REM ====== A. Auto-elevation ======
 net session >nul 2>&1
@@ -146,8 +158,12 @@ if "!REPO_STATE!"=="HAS_GIT" (
         echo Repo ekziston dhe eshte valid. Duke bere fetch + reset...
         REM Ruaj db.js perpara reset-it (do mbishkruhet bashke me skedaret e tjere)
         if exist "server\db.js" copy /Y "server\db.js" "%TEMP%\kubit-db-preserve.js" >nul
-        REM Fetch + hard reset ignoron cdo ndryshim lokal te tracked files
-        REM (perjashto db.js qe e kemi backup; install-fresh.bat mund te jete i ndryshuar)
+        REM Hiq read-only attributes dhe fshi .bat-et tracked qe mund te jene bllokuar
+        REM nga antivirus/Windows. git reset --hard do t'i rikrijoje.
+        attrib -R "*.bat" /S >nul 2>&1
+        for %%F in (install.bat install-fresh.bat update.bat setup.bat setup-offline.bat) do (
+            if exist "%%F" del /F /Q "%%F" >nul 2>&1
+        )
         git fetch origin >> "%LOG%" 2>&1
         if errorlevel 1 (
             echo [X] git fetch deshtoi. Kontrollo %LOG%
@@ -155,8 +171,13 @@ if "!REPO_STATE!"=="HAS_GIT" (
         )
         git reset --hard origin/main >> "%LOG%" 2>&1
         if errorlevel 1 (
-            echo [X] git reset deshtoi. Kontrollo %LOG%
-            popd & goto :fail
+            echo [!] git reset deshtoi ^(permission denied^). Provoj git clean + reset...
+            git clean -fdx >> "%LOG%" 2>&1
+            git reset --hard origin/main >> "%LOG%" 2>&1
+            if errorlevel 1 (
+                echo [X] git reset deshtoi perfundimisht. Kontrollo %LOG%
+                popd & goto :fail
+            )
         )
         if exist "%TEMP%\kubit-db-preserve.js" copy /Y "%TEMP%\kubit-db-preserve.js" "server\db.js" >nul
         popd

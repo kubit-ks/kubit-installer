@@ -5,12 +5,23 @@ title Kubit Ticket System - Update
 color 0A
 
 REM ====== Konfigurimi ======
-set "SCRIPT_VERSION=2026-04-21.3"
+set "SCRIPT_VERSION=2026-04-21.4"
 set "INSTALL_DIR=C:\Kubit"
 set "LOG=%TEMP%\kubit-update.log"
 
 echo [%date% %time%] Update filloi - update.bat v!SCRIPT_VERSION! > "%LOG%"
 echo [%date% %time%] Script path: %~f0 >> "%LOG%"
+
+REM Nese skripti eshte brenda INSTALL_DIR, zhvendose ne TEMP qe te mos bllokoje reset
+set "SCRIPT_DIR=%~dp0"
+if /I "!SCRIPT_DIR:~0,8!"=="%INSTALL_DIR:~0,8%" (
+    echo [!] Skripti po punon brenda %INSTALL_DIR%. Duke e zhvendosur ne %%TEMP%%...
+    set "NEW_PATH=%TEMP%\kubit-update-v!SCRIPT_VERSION!.bat"
+    copy /Y "%~f0" "!NEW_PATH!" >nul
+    echo [%date% %time%] Relaunching from !NEW_PATH! >> "%LOG%"
+    start "" /wait cmd /c "!NEW_PATH!"
+    exit /b 0
+)
 
 REM ====== A. Auto-elevation ======
 net session >nul 2>&1
@@ -84,8 +95,13 @@ if errorlevel 1 (
     goto :fail
 )
 
-REM Fetch + hard reset - ignoron cdo ndryshim lokal (p.sh. db.js template)
-REM db.js e kemi backup; install-fresh.bat/update.bat mund te jene mbishkruar nga user
+REM Hiq read-only attributes + fshi .bat-et tracked qe te mos bllokojne reset
+attrib -R "*.bat" /S >nul 2>&1
+for %%F in (install.bat install-fresh.bat update.bat setup.bat setup-offline.bat) do (
+    if exist "%%F" del /F /Q "%%F" >nul 2>&1
+)
+
+REM Fetch + hard reset - ignoron cdo ndryshim lokal
 git fetch origin
 set "FETCH_EXIT=!errorlevel!"
 echo [%date% %time%] git fetch exit=!FETCH_EXIT! >> "%LOG%"
@@ -97,8 +113,13 @@ git reset --hard origin/main
 set "RESET_EXIT=!errorlevel!"
 echo [%date% %time%] git reset exit=!RESET_EXIT! >> "%LOG%"
 if not "!RESET_EXIT!"=="0" (
-    echo [X] git reset deshtoi ^(exit !RESET_EXIT!^)
-    goto :fail
+    echo [!] git reset deshtoi. Provoj git clean + reset...
+    git clean -fdx >> "%LOG%" 2>&1
+    git reset --hard origin/main
+    if errorlevel 1 (
+        echo [X] git reset deshtoi perfundimisht ^(exit !RESET_EXIT!^)
+        goto :fail
+    )
 )
 echo.
 
