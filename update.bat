@@ -81,15 +81,20 @@ if errorlevel 1 (
     goto :fail
 )
 
-REM Nese db.js eshte e modifikuar, stash nese ka ndryshime qe s'jane committed
-git stash push server\db.js >nul 2>&1
-
-git pull --ff-only
-set "PULL_EXIT=!errorlevel!"
-echo [%date% %time%] git pull exit=!PULL_EXIT! >> "%LOG%"
-if not "!PULL_EXIT!"=="0" (
-    echo [X] git pull deshtoi ^(exit !PULL_EXIT!^)
-    echo     Kontrollo manualisht ne %INSTALL_DIR%
+REM Fetch + hard reset - ignoron cdo ndryshim lokal (p.sh. db.js template)
+REM db.js e kemi backup; install-fresh.bat/update.bat mund te jene mbishkruar nga user
+git fetch origin
+set "FETCH_EXIT=!errorlevel!"
+echo [%date% %time%] git fetch exit=!FETCH_EXIT! >> "%LOG%"
+if not "!FETCH_EXIT!"=="0" (
+    echo [X] git fetch deshtoi ^(exit !FETCH_EXIT!^)
+    goto :fail
+)
+git reset --hard origin/main
+set "RESET_EXIT=!errorlevel!"
+echo [%date% %time%] git reset exit=!RESET_EXIT! >> "%LOG%"
+if not "!RESET_EXIT!"=="0" (
+    echo [X] git reset deshtoi ^(exit !RESET_EXIT!^)
     goto :fail
 )
 echo.

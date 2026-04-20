@@ -140,12 +140,19 @@ if "!REPO_STATE!"=="HAS_GIT" (
         echo [%date% %time%] Corrupted .git detected >> "%LOG%"
         set "REPO_STATE=CORRUPTED"
     ) else (
-        echo Repo ekziston dhe eshte valid. Duke bere git pull...
-        REM Ruaj db.js perpara pull-it
+        echo Repo ekziston dhe eshte valid. Duke bere fetch + reset...
+        REM Ruaj db.js perpara reset-it (do mbishkruhet bashke me skedaret e tjere)
         if exist "server\db.js" copy /Y "server\db.js" "%TEMP%\kubit-db-preserve.js" >nul
-        git pull --ff-only >> "%LOG%" 2>&1
+        REM Fetch + hard reset ignoron cdo ndryshim lokal te tracked files
+        REM (perjashto db.js qe e kemi backup; install-fresh.bat mund te jete i ndryshuar)
+        git fetch origin >> "%LOG%" 2>&1
         if errorlevel 1 (
-            echo [X] git pull deshtoi. Kontrollo %LOG%
+            echo [X] git fetch deshtoi. Kontrollo %LOG%
+            popd & goto :fail
+        )
+        git reset --hard origin/main >> "%LOG%" 2>&1
+        if errorlevel 1 (
+            echo [X] git reset deshtoi. Kontrollo %LOG%
             popd & goto :fail
         )
         if exist "%TEMP%\kubit-db-preserve.js" copy /Y "%TEMP%\kubit-db-preserve.js" "server\db.js" >nul
