@@ -125,21 +125,77 @@ echo [%date% %time%] HAPI 4 - git clone >> "%LOG%"
 REM Aktivizo Git Credential Manager qe PAT-i te ruhet
 git config --global credential.helper manager >nul 2>&1
 
-if exist "%INSTALL_DIR%\.git" (
-    echo Repo ekziston. Duke bere git pull...
+REM Verifiko gjendjen e %INSTALL_DIR%
+set "REPO_STATE=NEW"
+if exist "%INSTALL_DIR%\.git" set "REPO_STATE=HAS_GIT"
+if not exist "%INSTALL_DIR%\.git" if exist "%INSTALL_DIR%" set "REPO_STATE=DIR_NO_GIT"
+
+if "!REPO_STATE!"=="HAS_GIT" (
+    REM Verifiko qe .git eshte valid
     pushd "%INSTALL_DIR%"
-    git pull --ff-only >> "%LOG%" 2>&1
+    git rev-parse --git-dir >nul 2>&1
     if errorlevel 1 (
-        echo [X] git pull deshtoi. Kontrollo %LOG%
-        popd & goto :fail
+        popd
+        echo [!] .git eshte i korruptuar ^(mbetur nga instalim i nderprerje^).
+        echo [%date% %time%] Corrupted .git detected >> "%LOG%"
+        set "REPO_STATE=CORRUPTED"
+    ) else (
+        echo Repo ekziston dhe eshte valid. Duke bere git pull...
+        REM Ruaj db.js perpara pull-it
+        if exist "server\db.js" copy /Y "server\db.js" "%TEMP%\kubit-db-preserve.js" >nul
+        git pull --ff-only >> "%LOG%" 2>&1
+        if errorlevel 1 (
+            echo [X] git pull deshtoi. Kontrollo %LOG%
+            popd & goto :fail
+        )
+        if exist "%TEMP%\kubit-db-preserve.js" copy /Y "%TEMP%\kubit-db-preserve.js" "server\db.js" >nul
+        popd
     )
-    popd
-) else (
-    if exist "%INSTALL_DIR%" (
-        echo [X] Folderi %INSTALL_DIR% ekziston por nuk eshte git repo.
-        echo     Zhvendose/fshi ate dhe ri-ekzekuto install-fresh.bat
+)
+
+if "!REPO_STATE!"=="CORRUPTED" (
+    echo     Po e riparoj folderin - ruaj db.js nese ekziston dhe klonoj perseri.
+    if exist "%INSTALL_DIR%\server\db.js" copy /Y "%INSTALL_DIR%\server\db.js" "%TEMP%\kubit-db-preserve.js" >nul
+    REM Hiq .git-in e korruptuar + node_modules (do re-instalohen)
+    rmdir /S /Q "%INSTALL_DIR%\.git" 2>nul
+    REM Nese folderi ka edhe skedare te tjere, klonoj ne dir te perkohshem dhe me vone e merge
+    set "TMP_CLONE=%TEMP%\kubit-tmp-clone"
+    if exist "!TMP_CLONE!" rmdir /S /Q "!TMP_CLONE!"
+    echo.
+    echo [!] Do kerkohet login GitHub ne dritaren e re.
+    echo.
+    pause
+    git clone "%REPO_URL%" "!TMP_CLONE!" >> "%LOG%" 2>&1
+    if errorlevel 1 (
+        echo [X] git clone deshtoi. Shiko %LOG%
         goto :fail
     )
+    REM Zhvendos .git nga temp te install dir
+    move /Y "!TMP_CLONE!\.git" "%INSTALL_DIR%\.git" >nul
+    REM Kopjoj skedaret e munguar (git pull do ti sjelli te tjere)
+    xcopy /E /Y /Q /H /I "!TMP_CLONE!\*" "%INSTALL_DIR%\" >nul
+    rmdir /S /Q "!TMP_CLONE!" 2>nul
+    if exist "%TEMP%\kubit-db-preserve.js" copy /Y "%TEMP%\kubit-db-preserve.js" "%INSTALL_DIR%\server\db.js" >nul
+    echo     Repo u riparuar ne %INSTALL_DIR%
+    set "REPO_STATE=HAS_GIT"
+)
+
+if "!REPO_STATE!"=="DIR_NO_GIT" (
+    REM Folderi ekziston por pa .git. Nese eshte bosh - klonoj aty; ndryshe ndaloj.
+    dir /b "%INSTALL_DIR%" 2>nul | findstr /R /V "^$" >nul
+    if errorlevel 1 (
+        rmdir "%INSTALL_DIR%" 2>nul
+        set "REPO_STATE=NEW"
+    ) else (
+        echo [X] Folderi %INSTALL_DIR% ka skedare por asnje .git folder.
+        echo     Ose:
+        echo       1. Fshije manualisht ^(ruaj db.js nese do^) dhe ri-ekzekuto
+        echo       2. Ri-eksekuto update.bat nese ka qene instalim i meparshem
+        goto :fail
+    )
+)
+
+if "!REPO_STATE!"=="NEW" (
     echo.
     echo [!] Repo eshte PRIVAT. Do te dale dritarja e autentifikimit GitHub.
     echo     Kliko "Sign in with your browser" OSE "Token" dhe jep PAT-in.
@@ -152,6 +208,7 @@ if exist "%INSTALL_DIR%\.git" (
         goto :fail
     )
 )
+
 cd /d "%INSTALL_DIR%"
 echo     Kodi u shkarkua ne %INSTALL_DIR%
 echo.
