@@ -255,15 +255,36 @@ echo ------------------------------------------------------
 echo [6/8] Konfigurim i SQL Server (interaktiv)
 echo ------------------------------------------------------
 echo [%date% %time%] HAPI 6 - setup.cjs >> "%LOG%"
+
+REM Nese db.js eshte shablloni i paracaktuar nga git (Server=.), fshije qe setup.cjs
+REM te pyese user-in. Nese eshte db.js i ruajtur nga install i meparshem valid, ruaje.
+set "DB_VALID=0"
 if exist "server\db.js" (
-    echo     server\db.js ekziston tashme. Po kapercej konfigurimin.
-    echo     Nese do ta rikonfigurosh, fshije server\db.js dhe ri-ekzekuto.
-    echo.
-    REM Ndertimi vazhdon direkt
+    findstr /C:"Server=." /C:"Trusted_Connection=yes" "server\db.js" >nul 2>&1
+    if errorlevel 1 (
+        REM s'eshte shablloni default - besojme qe eshte i konfiguruar
+        set "DB_VALID=1"
+    ) else (
+        REM eshte shablloni - fshije qe setup.cjs te pyese
+        del "server\db.js" >nul 2>&1
+        echo [%date% %time%] db.js ishte shablloni default - u fshi >> "%LOG%"
+    )
+)
+
+if "!DB_VALID!"=="1" (
+    echo     server\db.js ekziston i konfiguruar. Po kapercej.
+    echo [%date% %time%] db.js preserved >> "%LOG%"
+    echo     Duke ndertuar frontend...
     call npm run build >> "%LOG%" 2>&1
-    if errorlevel 1 (echo [X] Build deshtoi. Shiko %LOG% & goto :fail)
+    set "BUILD_EXIT=!errorlevel!"
+    echo [%date% %time%] build exit=!BUILD_EXIT! >> "%LOG%"
+    if not "!BUILD_EXIT!"=="0" (
+        echo [X] Build deshtoi. Shiko %LOG%
+        goto :fail
+    )
+    echo     Build OK.
 ) else (
-    echo Nis setup-in interaktiv (merr detajet per SQL Server)...
+    echo Nis setup-in interaktiv ^(merr detajet per SQL Server^)...
     echo.
     echo Format per "Server name":
     echo   - Default instance:  localhost  ose  .
@@ -271,9 +292,13 @@ if exist "server\db.js" (
     echo   - PC tjeter:         SERVERNAME  ose  192.168.x.x
     echo   - Me port custom:    localhost,1433
     echo.
+    echo [%date% %time%] starting setup.cjs interactive >> "%LOG%"
     call node setup.cjs
-    if errorlevel 1 (
-        echo [X] Konfigurimi i DB deshtoi.
+    set "CJS_EXIT=!errorlevel!"
+    echo [%date% %time%] setup.cjs exit=!CJS_EXIT! >> "%LOG%"
+    if not "!CJS_EXIT!"=="0" (
+        echo.
+        echo [X] Konfigurimi i DB deshtoi ^(exit !CJS_EXIT!^).
         echo     Ri-ekzekuto install-fresh.bat me te dhenat e sakta.
         goto :fail
     )
