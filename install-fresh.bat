@@ -5,11 +5,13 @@ title Kubit Ticket System - Instalim i ri
 color 0B
 
 REM ====== Konfigurimi ======
+set "SCRIPT_VERSION=2026-04-21.3"
 set "REPO_URL=https://github.com/kubit-ks/Kubit-Ticket-System.git"
 set "INSTALL_DIR=C:\Kubit"
 set "LOG=%TEMP%\kubit-install-fresh.log"
 
-echo [%date% %time%] Instalimi filloi > "%LOG%"
+echo [%date% %time%] Instalimi filloi - install-fresh.bat v!SCRIPT_VERSION! > "%LOG%"
+echo [%date% %time%] Script path: %~f0 >> "%LOG%"
 
 REM ====== A. Auto-elevation ======
 net session >nul 2>&1
@@ -23,6 +25,7 @@ if %errorlevel% neq 0 (
 echo.
 echo ======================================================
 echo    KUBIT TICKET SYSTEM - Instalim i plote nga fillimi
+echo    Script version: !SCRIPT_VERSION!
 echo ======================================================
 echo.
 echo Folderi i instalimit:  %INSTALL_DIR%

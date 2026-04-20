@@ -5,10 +5,12 @@ title Kubit Ticket System - Update
 color 0A
 
 REM ====== Konfigurimi ======
+set "SCRIPT_VERSION=2026-04-21.3"
 set "INSTALL_DIR=C:\Kubit"
 set "LOG=%TEMP%\kubit-update.log"
 
-echo [%date% %time%] Update filloi > "%LOG%"
+echo [%date% %time%] Update filloi - update.bat v!SCRIPT_VERSION! > "%LOG%"
+echo [%date% %time%] Script path: %~f0 >> "%LOG%"
 
 REM ====== A. Auto-elevation ======
 net session >nul 2>&1
@@ -21,6 +23,7 @@ if %errorlevel% neq 0 (
 echo.
 echo ======================================================
 echo    KUBIT TICKET SYSTEM - Update nga Git
+echo    Script version: !SCRIPT_VERSION!
 echo ======================================================
 echo.
 
