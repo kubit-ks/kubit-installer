@@ -5,9 +5,10 @@ title Kubit Ticket System - Update
 color 0A
 
 REM ====== Konfigurimi ======
-set "SCRIPT_VERSION=2026-04-21.5"
+set "SCRIPT_VERSION=2026-04-21.6"
 set "INSTALL_DIR=C:\Kubit"
 set "LOG=%TEMP%\kubit-update.log"
+set "UPDATE_RAW_URL=https://raw.githubusercontent.com/kubit-ks/kubit-installer/main/update.bat"
 
 echo [%date% %time%] Update filloi - update.bat v!SCRIPT_VERSION! > "%LOG%"
 echo [%date% %time%] Script path: %~f0 >> "%LOG%"
@@ -21,6 +22,34 @@ if /I "!SCRIPT_DIR:~0,8!"=="%INSTALL_DIR:~0,8%" (
     echo [%date% %time%] Relaunching from !NEW_PATH! >> "%LOG%"
     start "" /wait cmd /c "!NEW_PATH!"
     exit /b 0
+)
+
+REM ====== Self-update: shkarko versionin me te fundit nga GitHub ======
+REM Kapercehet kur flag '--no-self-update' eshte pasuar (pas self-update te rregullt)
+if /I not "%~1"=="--no-self-update" (
+    echo.
+    echo Kontroll per version te ri te update.bat ...
+    set "TMP_UPDATE=%TEMP%\kubit-update-latest.bat"
+    powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing -Uri '%UPDATE_RAW_URL%?v=!random!' -OutFile '%TMP_UPDATE%' -Headers @{'Cache-Control'='no-cache'} -TimeoutSec 15 } catch { exit 1 }"
+    if exist "!TMP_UPDATE!" (
+        REM Krahaso hash-et SHA256
+        for /f "delims=" %%H in ('powershell -NoProfile -Command "(Get-FileHash -Path '%~f0' -Algorithm SHA256).Hash"') do set "LOCAL_HASH=%%H"
+        for /f "delims=" %%H in ('powershell -NoProfile -Command "(Get-FileHash -Path '!TMP_UPDATE!' -Algorithm SHA256).Hash"') do set "REMOTE_HASH=%%H"
+        if /I not "!LOCAL_HASH!"=="!REMOTE_HASH!" (
+            echo [!] U gjet version i ri. Zevendesim dhe rinis...
+            echo [%date% %time%] Self-update: local=!LOCAL_HASH:~0,8! remote=!REMOTE_HASH:~0,8! >> "%LOG%"
+            copy /Y "!TMP_UPDATE!" "%~f0" >nul
+            del "!TMP_UPDATE!" >nul 2>&1
+            start "" /wait cmd /c "%~f0" --no-self-update
+            exit /b 0
+        ) else (
+            echo     Version aktual - nuk ka update te skriptit.
+            del "!TMP_UPDATE!" >nul 2>&1
+        )
+    ) else (
+        echo [!] Pa internet ose CDN jo-ne-dispozicion. Vazhdoj me versionin lokal.
+    )
+    echo.
 )
 
 REM ====== A. Auto-elevation ======
