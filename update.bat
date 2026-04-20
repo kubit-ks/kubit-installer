@@ -5,7 +5,7 @@ title Kubit Ticket System - Update
 color 0A
 
 REM ====== Konfigurimi ======
-set "SCRIPT_VERSION=2026-04-21.4"
+set "SCRIPT_VERSION=2026-04-21.5"
 set "INSTALL_DIR=C:\Kubit"
 set "LOG=%TEMP%\kubit-update.log"
 
@@ -95,13 +95,25 @@ if errorlevel 1 (
     goto :fail
 )
 
-REM Hiq read-only attributes + fshi .bat-et tracked qe te mos bllokojne reset
-attrib -R "*.bat" /S >nul 2>&1
+REM Ndalo KubitAPI service (leshon file locks)
+sc query KubitAPI >nul 2>&1
+if not errorlevel 1 (
+    echo     Ndalim i KubitAPI service perkohesisht...
+    net stop KubitAPI >nul 2>&1
+    timeout /t 2 /nobreak >nul
+)
+
+REM Merr pronesine + leje te plota per folderin
+takeown /F "%INSTALL_DIR%" /R /A >nul 2>&1
+icacls "%INSTALL_DIR%" /grant Administrators:F /T /C /Q >nul 2>&1
+
+REM Hiq ReadOnly + fshi .bat-et tracked
+attrib -R "%INSTALL_DIR%\*.*" /S /D >nul 2>&1
 for %%F in (install.bat install-fresh.bat update.bat setup.bat setup-offline.bat) do (
     if exist "%%F" del /F /Q "%%F" >nul 2>&1
 )
 
-REM Fetch + hard reset - ignoron cdo ndryshim lokal
+REM Fetch
 git fetch origin
 set "FETCH_EXIT=!errorlevel!"
 echo [%date% %time%] git fetch exit=!FETCH_EXIT! >> "%LOG%"
@@ -109,17 +121,24 @@ if not "!FETCH_EXIT!"=="0" (
     echo [X] git fetch deshtoi ^(exit !FETCH_EXIT!^)
     goto :fail
 )
-git reset --hard origin/main
-set "RESET_EXIT=!errorlevel!"
-echo [%date% %time%] git reset exit=!RESET_EXIT! >> "%LOG%"
-if not "!RESET_EXIT!"=="0" (
-    echo [!] git reset deshtoi. Provoj git clean + reset...
-    git clean -fdx >> "%LOG%" 2>&1
-    git reset --hard origin/main
-    if errorlevel 1 (
-        echo [X] git reset deshtoi perfundimisht ^(exit !RESET_EXIT!^)
-        goto :fail
+
+REM Reset me retry (Windows Defender mund bllokoje perkoheshem)
+set "RESET_OK=0"
+for /L %%i in (1,1,3) do (
+    if "!RESET_OK!"=="0" (
+        git reset --hard origin/main
+        if not errorlevel 1 set "RESET_OK=1"
+        if "!RESET_OK!"=="0" (
+            echo     [!] Reset provim %%i deshtoi. Prisni 3 sekonda...
+            timeout /t 3 /nobreak >nul
+            git clean -fdx >> "%LOG%" 2>&1
+        )
     )
+)
+echo [%date% %time%] git reset RESET_OK=!RESET_OK! >> "%LOG%"
+if "!RESET_OK!"=="0" (
+    echo [X] git reset deshtoi 3 here. Kontrollo %LOG%
+    goto :fail
 )
 echo.
 

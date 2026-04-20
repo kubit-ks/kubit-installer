@@ -5,7 +5,7 @@ title Kubit Ticket System - Instalim i ri
 color 0B
 
 REM ====== Konfigurimi ======
-set "SCRIPT_VERSION=2026-04-21.4"
+set "SCRIPT_VERSION=2026-04-21.5"
 set "REPO_URL=https://github.com/kubit-ks/Kubit-Ticket-System.git"
 set "INSTALL_DIR=C:\Kubit"
 set "LOG=%TEMP%\kubit-install-fresh.log"
@@ -155,30 +155,71 @@ if "!REPO_STATE!"=="HAS_GIT" (
         echo [%date% %time%] Corrupted .git detected >> "%LOG%"
         set "REPO_STATE=CORRUPTED"
     ) else (
-        echo Repo ekziston dhe eshte valid. Duke bere fetch + reset...
-        REM Ruaj db.js perpara reset-it (do mbishkruhet bashke me skedaret e tjere)
+        echo Repo ekziston dhe eshte valid. Po pergatit update...
+        REM Ruaj db.js perpara reset-it
         if exist "server\db.js" copy /Y "server\db.js" "%TEMP%\kubit-db-preserve.js" >nul
-        REM Hiq read-only attributes dhe fshi .bat-et tracked qe mund te jene bllokuar
-        REM nga antivirus/Windows. git reset --hard do t'i rikrijoje.
-        attrib -R "*.bat" /S >nul 2>&1
+
+        REM 1. Ndalo sherbimin KubitAPI nese po punon (mund te mbaje file locks)
+        sc query KubitAPI >nul 2>&1
+        if not errorlevel 1 (
+            echo     Ndalim i KubitAPI service perkohesisht...
+            net stop KubitAPI >nul 2>&1
+            timeout /t 2 /nobreak >nul
+        )
+
+        REM 2. Merr pronesine + leje te plota per te gjithe folderin
+        echo     Konfigurimi i lejeve...
+        takeown /F "%INSTALL_DIR%" /R /A >nul 2>&1
+        icacls "%INSTALL_DIR%" /grant Administrators:F /T /C /Q >nul 2>&1
+
+        REM 3. Hiq ReadOnly nga cdo skedar
+        attrib -R "%INSTALL_DIR%\*.*" /S /D >nul 2>&1
+
+        REM 4. Fshij .bat-et tracked (do rikrijohen nga git reset)
         for %%F in (install.bat install-fresh.bat update.bat setup.bat setup-offline.bat) do (
             if exist "%%F" del /F /Q "%%F" >nul 2>&1
         )
+
+        REM 5. Git fetch
         git fetch origin >> "%LOG%" 2>&1
         if errorlevel 1 (
             echo [X] git fetch deshtoi. Kontrollo %LOG%
             popd & goto :fail
         )
-        git reset --hard origin/main >> "%LOG%" 2>&1
-        if errorlevel 1 (
-            echo [!] git reset deshtoi ^(permission denied^). Provoj git clean + reset...
-            git clean -fdx >> "%LOG%" 2>&1
-            git reset --hard origin/main >> "%LOG%" 2>&1
-            if errorlevel 1 (
-                echo [X] git reset deshtoi perfundimisht. Kontrollo %LOG%
-                popd & goto :fail
+
+        REM 6. Git reset me retry (Windows Defender mund bllokoje transientisht)
+        set "RESET_OK=0"
+        for /L %%i in (1,1,3) do (
+            if "!RESET_OK!"=="0" (
+                git reset --hard origin/main >> "%LOG%" 2>&1
+                if not errorlevel 1 set "RESET_OK=1"
+                if "!RESET_OK!"=="0" (
+                    echo     [!] Provoj %%i dehstoi. Prisni 3 sekonda dhe rrepeto...
+                    timeout /t 3 /nobreak >nul
+                    git clean -fdx >> "%LOG%" 2>&1
+                )
             )
         )
+
+        if "!RESET_OK!"=="0" (
+            echo [X] git reset deshtoi 3 here. Po provoj rebuild ne temp dhe kopjim...
+            echo [%date% %time%] Falling back to TMP clone + xcopy >> "%LOG%"
+            popd
+            set "TMP_CLONE=%TEMP%\kubit-tmp-clone-update"
+            if exist "!TMP_CLONE!" rmdir /S /Q "!TMP_CLONE!"
+            git clone "%REPO_URL%" "!TMP_CLONE!" >> "%LOG%" 2>&1
+            if errorlevel 1 (
+                echo [X] Clone ne temp deshtoi. Kontrollo %LOG%
+                goto :fail
+            )
+            REM Zhvendos .git e re, pastaj kopjo skedaret
+            rmdir /S /Q "%INSTALL_DIR%\.git" 2>nul
+            move /Y "!TMP_CLONE!\.git" "%INSTALL_DIR%\.git" >nul
+            xcopy /E /Y /Q /H /I /R "!TMP_CLONE!\*" "%INSTALL_DIR%\" >nul
+            rmdir /S /Q "!TMP_CLONE!" 2>nul
+            pushd "%INSTALL_DIR%"
+        )
+
         if exist "%TEMP%\kubit-db-preserve.js" copy /Y "%TEMP%\kubit-db-preserve.js" "server\db.js" >nul
         popd
     )
