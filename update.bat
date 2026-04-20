@@ -37,19 +37,37 @@ cd /d "%INSTALL_DIR%"
 echo Folderi: %INSTALL_DIR%
 echo.
 
-REM ====== 1. Backup i server\db.js ======
+REM ====== 1. Backup i konfigurimit (db.js + portet) ======
 echo ------------------------------------------------------
-echo [1/5] Backup i konfigurimit te DB
+echo [1/5] Backup i konfigurimit te klientit
 echo ------------------------------------------------------
 set "DB_BACKUP=%TEMP%\kubit-db-backup.js"
 if exist "server\db.js" (
     copy /Y "server\db.js" "%DB_BACKUP%" >nul
-    echo     db.js u ruajt ne: %DB_BACKUP%
+    echo     db.js -^> %DB_BACKUP%
     echo [%date% %time%] db.js backup OK >> "%LOG%"
 ) else (
     echo [!] server\db.js nuk ekziston - do vazhdoj pa backup
     echo [%date% %time%] WARNING: db.js missing >> "%LOG%"
 )
+
+REM Lexo portet aktuale (nga server\index.js dhe vite.config.js)
+set "API_PORT=3002"
+set "WEB_PORT=5173"
+for /f "tokens=5 delims= " %%P in ('findstr /R "^const PORT" server\index.js 2^>nul') do (
+    set "TMP=%%P"
+    set "TMP=!TMP:;=!"
+    if not "!TMP!"=="" set "API_PORT=!TMP!"
+)
+REM Lexo webPort nga vite.config.js (formati: port: 5173,)
+for /f "tokens=2 delims=:," %%P in ('findstr /C:"port:" vite.config.js 2^>nul') do (
+    set "TMP=%%P"
+    set "TMP=!TMP: =!"
+    if not "!TMP!"=="" set "WEB_PORT=!TMP!"
+)
+echo     API port detektuar:    !API_PORT!
+echo     Frontend port detektuar: !WEB_PORT!
+echo [%date% %time%] API_PORT=!API_PORT! WEB_PORT=!WEB_PORT! >> "%LOG%"
 echo.
 
 REM ====== 2. Git pull ======
@@ -76,9 +94,9 @@ if not "!PULL_EXIT!"=="0" (
 )
 echo.
 
-REM ====== 3. Restoro db.js ======
+REM ====== 3. Restoro db.js + portet ======
 echo ------------------------------------------------------
-echo [3/5] Restorim i konfigurimit te DB
+echo [3/5] Restorim i konfigurimit te klientit
 echo ------------------------------------------------------
 if exist "%DB_BACKUP%" (
     copy /Y "%DB_BACKUP%" "server\db.js" >nul
@@ -87,6 +105,15 @@ if exist "%DB_BACKUP%" (
 ) else (
     echo [!] Asnje backup - db.js mbetet nga git ^(mund te kete credentials te gabuar^)
 )
+
+REM Riaplikoj API port ne server\index.js (git pull mund e ka mbishkruar)
+echo     Duke riaplikuar portet: API=!API_PORT! Frontend=!WEB_PORT!
+powershell -NoProfile -Command "$p = Get-Content 'server\index.js' -Raw; $p = $p -replace '(?m)^const PORT\s*=\s*\d+', ('const PORT = ' + !API_PORT!); Set-Content -NoNewline 'server\index.js' -Value $p -Encoding UTF8" >> "%LOG%" 2>&1
+
+REM Riaplikoj Frontend port + API proxy ne vite.config.js
+powershell -NoProfile -Command "if (Test-Path 'vite.config.js') { $v = Get-Content 'vite.config.js' -Raw; $v = $v -replace 'port:\s*\d+', ('port: ' + !WEB_PORT!); $v = $v -replace 'http://localhost:\d+', ('http://localhost:' + !API_PORT!); Set-Content -NoNewline 'vite.config.js' -Value $v -Encoding UTF8 }" >> "%LOG%" 2>&1
+
+echo [%date% %time%] ports reapplied: API=!API_PORT! WEB=!WEB_PORT! >> "%LOG%"
 echo.
 
 REM ====== 4. npm install (nese package.json ka ndryshuar) ======
