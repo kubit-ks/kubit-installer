@@ -5,7 +5,7 @@ title Kubit Ticket System - Instalim i ri
 color 0B
 
 REM ====== Konfigurimi ======
-set "SCRIPT_VERSION=2026-04-21.5"
+set "SCRIPT_VERSION=2026-04-21.6"
 set "REPO_URL=https://github.com/kubit-ks/Kubit-Ticket-System.git"
 set "INSTALL_DIR=C:\Kubit"
 set "LOG=%TEMP%\kubit-install-fresh.log"
@@ -253,17 +253,41 @@ if "!REPO_STATE!"=="CORRUPTED" (
 )
 
 if "!REPO_STATE!"=="DIR_NO_GIT" (
-    REM Folderi ekziston por pa .git. Nese eshte bosh - klonoj aty; ndryshe ndaloj.
+    REM Folderi ekziston por pa .git - ndreq automatikisht
     dir /b "%INSTALL_DIR%" 2>nul | findstr /R /V "^$" >nul
     if errorlevel 1 (
+        REM Folder bosh - thjesht klonoj
         rmdir "%INSTALL_DIR%" 2>nul
         set "REPO_STATE=NEW"
     ) else (
-        echo [X] Folderi %INSTALL_DIR% ka skedare por asnje .git folder.
-        echo     Ose:
-        echo       1. Fshije manualisht ^(ruaj db.js nese do^) dhe ri-ekzekuto
-        echo       2. Ri-eksekuto update.bat nese ka qene instalim i meparshem
-        goto :fail
+        echo [!] Folderi %INSTALL_DIR% ka skedare por pa .git. Po ndreq automatikisht...
+        echo [%date% %time%] DIR_NO_GIT auto-recovery >> "%LOG%"
+        REM Ruaj db.js
+        if exist "%INSTALL_DIR%\server\db.js" (
+            copy /Y "%INSTALL_DIR%\server\db.js" "%TEMP%\kubit-db-preserve.js" >nul
+            echo     server\db.js u ruajt
+        )
+        REM Klonim ne TEMP
+        echo.
+        echo [!] Repo eshte PRIVAT - do kerkohet login GitHub.
+        echo.
+        pause
+        set "TMP_CLONE_REPAIR=%TEMP%\kubit-repair-clone"
+        if exist "!TMP_CLONE_REPAIR!" rmdir /S /Q "!TMP_CLONE_REPAIR!"
+        git clone "%REPO_URL%" "!TMP_CLONE_REPAIR!" >> "%LOG%" 2>&1
+        if errorlevel 1 (
+            echo [X] git clone deshtoi. Shiko %LOG%
+            goto :fail
+        )
+        REM Zhvendos .git e re te install dir
+        move /Y "!TMP_CLONE_REPAIR!\.git" "%INSTALL_DIR%\.git" >nul
+        REM xcopy gjithshka, mbishkruan skedaret ekzistues
+        xcopy /E /Y /Q /H /I /R "!TMP_CLONE_REPAIR!\*" "%INSTALL_DIR%\" >nul 2>&1
+        rmdir /S /Q "!TMP_CLONE_REPAIR!" 2>nul
+        REM Restoro db.js
+        if exist "%TEMP%\kubit-db-preserve.js" copy /Y "%TEMP%\kubit-db-preserve.js" "%INSTALL_DIR%\server\db.js" >nul
+        echo     Folder-i u riparua me sukses.
+        set "REPO_STATE=HAS_GIT"
     )
 )
 
