@@ -21,12 +21,13 @@ REM
 REM  Nese db.js mungon (instalim i pare) → node setup.cjs per konfigurim
 REM ─────────────────────────────────────────────────────────────
 
-set "SCRIPT_VERSION=2026-04-21.1"
-set "INSTALL_DIR=%~dp0"
-if "%INSTALL_DIR:~-1%"=="\" set "INSTALL_DIR=%INSTALL_DIR:~0,-1%"
+set "SCRIPT_VERSION=2026-04-21.2"
+REM INSTALL_DIR eshte gjithmone C:\Kubit - s'varet nga ku ekzekutohet sync.bat
+set "INSTALL_DIR=C:\Kubit"
 set "LOG=%TEMP%\kubit-sync.log"
 
 echo [%date% %time%] sync.bat v!SCRIPT_VERSION! filloi > "%LOG%"
+echo [%date% %time%] Script path: %~f0 >> "%LOG%"
 echo [%date% %time%] INSTALL_DIR = %INSTALL_DIR% >> "%LOG%"
 
 REM ── Auto-elevation ──
@@ -37,13 +38,25 @@ if %errorlevel% neq 0 (
     exit /b 0
 )
 
-REM ── Self-relocate ne TEMP (qe git reset te mos bllokoje vetë sync.bat) ──
-if /I "%~f0"=="%INSTALL_DIR%\sync.bat" (
+REM ── Self-relocate ne TEMP nese skripti po punon brenda INSTALL_DIR ──
+REM (per te shmangur bllokimin nga git reset)
+set "SCRIPT_DIR=%~dp0"
+if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+if /I "!SCRIPT_DIR!"=="%INSTALL_DIR%" (
     set "RELOC=%TEMP%\kubit-sync-run.bat"
     copy /Y "%~f0" "!RELOC!" >nul
     echo [%date% %time%] Relaunching from TEMP >> "%LOG%"
     start "" /wait cmd /c "!RELOC!"
     exit /b 0
+)
+
+REM ── Verifiko qe INSTALL_DIR ekziston ──
+if not exist "%INSTALL_DIR%" (
+    echo.
+    echo [X] Folderi %INSTALL_DIR% nuk ekziston.
+    echo     Perdor install-fresh.bat per instalim te ri.
+    echo [%date% %time%] ERROR: INSTALL_DIR missing >> "%LOG%"
+    goto :end
 )
 
 cd /d "%INSTALL_DIR%"
