@@ -5,7 +5,7 @@ title Kubit Ticket System - Instalim i ri
 color 0B
 
 REM ====== Konfigurimi ======
-set "SCRIPT_VERSION=2026-04-21.6"
+set "SCRIPT_VERSION=2026-04-21.7"
 set "REPO_URL=https://github.com/kubit-ks/Kubit-Ticket-System.git"
 set "INSTALL_DIR=C:\Kubit"
 set "LOG=%TEMP%\kubit-install-fresh.log"
@@ -274,16 +274,41 @@ if "!REPO_STATE!"=="DIR_NO_GIT" (
         pause
         set "TMP_CLONE_REPAIR=%TEMP%\kubit-repair-clone"
         if exist "!TMP_CLONE_REPAIR!" rmdir /S /Q "!TMP_CLONE_REPAIR!"
-        git clone "%REPO_URL%" "!TMP_CLONE_REPAIR!" >> "%LOG%" 2>&1
+        REM Clone me --no-checkout (vetem .git, pa skedaret - me i shpejte, pa probleme antivirus)
+        git clone --no-checkout "%REPO_URL%" "!TMP_CLONE_REPAIR!" >> "%LOG%" 2>&1
         if errorlevel 1 (
             echo [X] git clone deshtoi. Shiko %LOG%
             goto :fail
         )
         REM Zhvendos .git e re te install dir
+        rmdir /S /Q "%INSTALL_DIR%\.git" 2>nul
         move /Y "!TMP_CLONE_REPAIR!\.git" "%INSTALL_DIR%\.git" >nul
-        REM xcopy gjithshka, mbishkruan skedaret ekzistues
-        xcopy /E /Y /Q /H /I /R "!TMP_CLONE_REPAIR!\*" "%INSTALL_DIR%\" >nul 2>&1
         rmdir /S /Q "!TMP_CLONE_REPAIR!" 2>nul
+
+        REM Tani .git eshte ne install dir. Checkout skedaret me retry.
+        pushd "%INSTALL_DIR%"
+        REM Hiq ReadOnly + fshi .bat-et tracked qe te mos bllokojne checkout
+        attrib -R "*.*" /S /D >nul 2>&1
+        for %%F in (install.bat install-fresh.bat update.bat setup.bat setup-offline.bat sync.bat) do (
+            if exist "%%F" del /F /Q "%%F" >nul 2>&1
+        )
+        set "CHK_OK=0"
+        for /L %%i in (1,1,3) do (
+            if "!CHK_OK!"=="0" (
+                git checkout -f main >> "%LOG%" 2>&1
+                if not errorlevel 1 set "CHK_OK=1"
+                if "!CHK_OK!"=="0" (
+                    echo     [!] Checkout attempt %%i deshtoi. Prisni 3 sek...
+                    timeout /t 3 /nobreak >nul
+                )
+            )
+        )
+        if "!CHK_OK!"=="0" (
+            echo [!] Checkout deshtoi - provoj git reset --hard origin/main...
+            git reset --hard origin/main >> "%LOG%" 2>&1
+        )
+        popd
+
         REM Restoro db.js
         if exist "%TEMP%\kubit-db-preserve.js" copy /Y "%TEMP%\kubit-db-preserve.js" "%INSTALL_DIR%\server\db.js" >nul
         echo     Folder-i u riparua me sukses.
