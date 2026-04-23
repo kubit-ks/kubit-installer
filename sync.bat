@@ -21,9 +21,10 @@ REM
 REM  Nese db.js mungon (instalim i pare) → node setup.cjs per konfigurim
 REM ─────────────────────────────────────────────────────────────
 
-set "SCRIPT_VERSION=2026-04-21.2"
+set "SCRIPT_VERSION=2026-04-21.3"
 REM INSTALL_DIR eshte gjithmone C:\Kubit - s'varet nga ku ekzekutohet sync.bat
 set "INSTALL_DIR=C:\Kubit"
+set "REPO_URL=https://github.com/kubit-ks/Kubit-Ticket-System.git"
 set "LOG=%TEMP%\kubit-sync.log"
 
 echo [%date% %time%] sync.bat v!SCRIPT_VERSION! filloi > "%LOG%"
@@ -131,8 +132,30 @@ for /L %%i in (1,1,3) do (
         )
     )
 )
+
+REM Fallback i fundit: klon ne TEMP, zhvendos .git, xcopy skedaret
 if "!OK!"=="0" (
-    echo [X] git reset deshtoi 3 here. Kontrollo %LOG%
+    echo [!] git reset deshtoi 3 here. Provoj fallback me TEMP clone...
+    echo [%date% %time%] Falling back to TMP clone >> "%LOG%"
+    set "TMP_CLONE=%TEMP%\kubit-tmp-clone-sync"
+    if exist "!TMP_CLONE!" rmdir /S /Q "!TMP_CLONE!"
+    git clone "%REPO_URL%" "!TMP_CLONE!" >> "%LOG%" 2>&1
+    if errorlevel 1 (
+        echo [X] Edhe clone ne TEMP deshtoi. Kontrollo %LOG%
+        goto :fail
+    )
+    REM Zhvendos .git i ri
+    rmdir /S /Q "%INSTALL_DIR%\.git" 2>nul
+    move /Y "!TMP_CLONE!\.git" "%INSTALL_DIR%\.git" >nul
+    REM xcopy per skedaret e tjere (overwrite te gjitha)
+    xcopy /E /Y /Q /H /I /R "!TMP_CLONE!\*" "%INSTALL_DIR%\" >nul 2>&1
+    rmdir /S /Q "!TMP_CLONE!" 2>nul
+    set "OK=1"
+    echo     Fallback i suksesshem.
+)
+
+if "!OK!"=="0" (
+    echo [X] sync deshtoi plotesisht. Kontrollo %LOG%
     goto :fail
 )
 echo     Kodi u freskua.
